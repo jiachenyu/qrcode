@@ -20,7 +20,8 @@ sys.setdefaultencoding('utf8')
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    format='%(asctime)s - %(filename)s:%(lineno)-5s - %(levelname)s - %(message)s',
+    datefmt="%Y-%m-%d %H:%M:%S")
 
 rotateFile = RotatingFileHandler(
     'main.log',
@@ -28,7 +29,8 @@ rotateFile = RotatingFileHandler(
     backupCount=5)
 rotateFile.setLevel(logging.INFO)
 formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    '%(asctime)s - %(filename)s:%(lineno)-5s - %(levelname)s - %(message)s',
+    datefmt="%Y-%m-%d %H:%M:%S")
 rotateFile.setFormatter(formatter)
 
 logger = logging.getLogger(__name__)
@@ -46,13 +48,11 @@ odbcConn = pyodbc.connect(connStr)
 odbcCursor = odbcConn.cursor()
 logger.info("odbc connection setup successfully!")
 
-
 def getNewRowsFromUpLog():
     rows = odbcCursor.execute(
         "select * from MessageUpLog where IsNew = 1").fetchall()
     logger.info("running getNewRowsFromUpLog: rows = {}".format(len(rows)))
     return rows
-
 
 def updateIsNewFromUpLog(row):
     odbcCursor.execute(
@@ -62,7 +62,6 @@ def updateIsNewFromUpLog(row):
     logger.info(
         "running updateIsNewFromUpLog: update MessageUpLog set IsNew = 0 where Id = {}".format(
             row[0]))
-
 
 def doWriteDownLog(upLogRow, frontText, behindText):
     deviceId = upLogRow[1]
@@ -98,7 +97,6 @@ def doWriteDownLog(upLogRow, frontText, behindText):
     odbcCursor.commit()
     logger.info("finish doWriteDownLog!")
 
-
 def doWriteDownLogForApiError(upLogRow, errorText):
     deviceId = upLogRow[1]
     length = upLogRow[3]
@@ -114,6 +112,7 @@ def doWriteDownLogForApiError(upLogRow, errorText):
         errorText)
     odbcCursor.commit()
     logger.info("finish doWriteDownLogForApiError!")
+    
 #-------------------- mysql operation ----------------------
 logger.info("start setup mysql connection.")
 mysqlConn = pymysql.connect(host='localhost',
@@ -156,18 +155,16 @@ def handleMysqlStatus(upLogRow):
             length,
             blobData)
         odbcCursor.commit()
-        mysqlConn.cursor().execute(
-            "update qrcode_table set status = 3 where data_id = {}".format(dataId))
-        logger.info("running handleMysqlStatus: {}".format(
-            "update qrcode_table set status = 3 where data_id = {}".format(dataId)))
+        sqlStr = "update qrcode_table set status = 3 where data_id = {}".format(dataId)
+        mysqlConn.cursor().execute(sqlStr)
+        logger.info("running handleMysqlStatus: {}".format(sqlStr))
         mysqlConn.commit()
         lastSuccessRow = row
     else:
+        sqlStr = "SELECT * FROM qrcode_table WHERE status=3 ORDER BY data_id DESC LIMIT 0,1"
         if not lastSuccessRow:
-            cursor.execute(
-                "SELECT * FROM qrcode_table WHERE status=3 ORDER BY data_id DESC LIMIT 0,1")
-            logger.info(
-                "running: SELECT * FROM qrcode_table WHERE status=3 ORDER BY data_id DESC LIMIT 0,1")
+            cursor.execute(sqlStr)
+            logger.info("running handleMysqlStatus: {}".format(sqlStr))
             lastSuccessRow = cursor.fetchall()[0]
 
         blobData = lastSuccessRow['data_blob']
@@ -185,10 +182,10 @@ def handleMysqlStatus(upLogRow):
             blobData)
         odbcCursor.commit()
         doWriteDownLogForApiError(upLogRow, "QR Error")
-        mysqlConn.cursor().execute(
-            "update qrcode_table set status = 4 where data_id = {}".format(dataId))
-        logger.info("running handleMysqlStatus: {}".format(
-            "update qrcode_table set status = 4 where data_id = {}".format(dataId)))
+        
+        sqlStr = "update qrcode_table set status = 4 where data_id = {}".format(dataId)
+        mysqlConn.cursor().execute(sqlStr)
+        logger.info("running handleMysqlStatus: {}".format(sqlStr))
         mysqlConn.commit()
     logger.info("finish handleMysqlStatus!")
 
@@ -217,8 +214,6 @@ def saveToDisk(url, data_id, equ_id):
 
 def doGetRequest(row):
     SIGNKEY = 'i5OqMrNXVyOJ5GEMYoEtRHqN1P9ghk6I'
-    #data_id = shortuuid.ShortUUID(alphabet="0123456789").random(length=10)
-    #equ_id  = shortuuid.ShortUUID(alphabet="0123456789").random(length=10)
     data_id, equ_id = row[0], row[1]
 
     parameterStr = "{SIGNKEY}data_id{data_id}equ_id{equ_id}{SIGNKEY}".format(
@@ -264,11 +259,7 @@ def doGetRequest(row):
 
 def choose(res, left, right):
     logger.info("running choose: {}, {}, {}".format(res, left, right))
-    if res:
-        return left
-    else:
-        return right
-
+    return left if res else right
 
 def job():
     logger.info("start job!!!")
@@ -287,45 +278,10 @@ def job():
     logger.info("finish job!!!")
 
 #import schedule
-# schedule.every(2).seconds.do(job)
-
-import win32serviceutil
-import win32service
-import win32event
-import servicemanager
-import socket
-
-
-class QRCodeServerSvc(win32serviceutil.ServiceFramework):
-    _svc_name_ = "QRCodeService"
-    _svc_display_name_ = "QR Code Service"
-    _svc_description_ = "This service is used for QR Code handling."
-
-    def __init__(self, args):
-        win32serviceutil.ServiceFramework.__init__(self, args)
-        self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
-        socket.setdefaulttimeout(60)
-
-    def SvcStop(self):
-        self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
-        win32event.SetEvent(self.hWaitStop)
-
-    def SvcDoRun(self):
-        servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
-                              servicemanager.PYS_SERVICE_STARTED,
-                              (self._svc_name_, ''))
-        self.main()
-        win32event.WaitForSingleObject(self.hWaitStop, win32event.INFINITE)
-
-    def main(self):
-        while True:
-            schedule.run_pending()
-            # job()
-            time.sleep(1)
+#schedule.every(2).seconds.do(job)
 
 if __name__ == '__main__':
     while True:
         # schedule.run_pending()
         job()
         time.sleep(1)
-    # win32serviceutil.HandleCommandLine(QRCodeServerSvc)
