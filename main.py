@@ -124,7 +124,6 @@ logger.info("mysql connection setup successfully!")
 
 lastSuccessRow = None
 
-
 def handleMysqlStatus(upLogRow):
     dataId = upLogRow[0]
     deviceId = upLogRow[1]
@@ -144,17 +143,30 @@ def handleMysqlStatus(upLogRow):
         blobData = row['data_blob']
         length = len(blobData)
         blobData = pyodbc.Binary(blobData)
-        logger.info(
-            "blobData length: mysql = {}, mssql = {}".format(
-                length, len(blobData)))
         #odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, convert(VARBINARY(max), ?, 2))", deviceId, port, length, blobData)
         odbcCursor.execute(
             "insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",
-            deviceId,
-            port,
-            length,
-            blobData)
+            deviceId, port, length, blobData)
         odbcCursor.commit()
+        
+        blobData1 = row['data_blob1']
+        if blobData1:
+            length1 = len(blobData1)
+            blobData1 = pyodbc.Binary(blobData1)
+            odbcCursor.execute(
+                "insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",
+                deviceId, port, length1, blobData1)
+            odbcCursor.commit()
+        
+        blobData2 = row['data_blob2']
+        if blobData2:
+            length2 = len(blobData1)
+            blobData2 = pyodbc.Binary(blobData1)
+            odbcCursor.execute(
+                "insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",
+                deviceId, port, length2, blobData2)
+            odbcCursor.commit()
+        
         sqlStr = "update qrcode_table set status = 3 where data_id = {}".format(dataId)
         mysqlConn.cursor().execute(sqlStr)
         logger.info("running handleMysqlStatus: {}".format(sqlStr))
@@ -272,7 +284,7 @@ def job():
         result = doGetRequest(row)
         if result:
             updateIsNewFromUpLog(row)
-            #doWriteDownLog(row, result[1], result[2])
+            doWriteDownLog(row, result[1], result[2])
             time.sleep(3)
             handleMysqlStatus(row)
     logger.info("finish job!!!")
