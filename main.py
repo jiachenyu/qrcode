@@ -26,7 +26,7 @@ logging.basicConfig(
 rotateFile = RotatingFileHandler(
     'main.log',
     maxBytes=10 * 1024 * 1024,
-    backupCount=5)
+    backupCount=2)
 rotateFile.setLevel(logging.INFO)
 formatter = logging.Formatter(
     '%(asctime)s - %(filename)s:%(lineno)-5s - %(levelname)s - %(message)s',
@@ -37,14 +37,13 @@ logger = logging.getLogger(__name__)
 logger.addHandler(rotateFile)
 
 #-------------------- sql server operation ----------------------
-dsn = 'sqlserverdatasource'
+dsn  = 'sqlserverdatasource'
 user = 'sa'
 password = 'windjack123'
 database = 'wifi2com'
-connStr = 'DRIVER={SQL Server};SERVER=139.196.57.30;PORT=1443;UID=%s;PWD=%s;DATABASE=%s;' % (
-    user, password, database)
+connStr  = 'DRIVER={SQL Server};SERVER=139.196.57.30;PORT=1443;UID=%s;PWD=%s;DATABASE=%s;' % (user, password, database)
 logger.info("start setup odbc connection, connStr = {}".format(connStr))
-odbcConn = pyodbc.connect(connStr)
+odbcConn   = pyodbc.connect(connStr)
 odbcCursor = odbcConn.cursor()
 logger.info("odbc connection setup successfully!")
 
@@ -102,7 +101,7 @@ def doWriteDownLogForApiError(upLogRow, errorText):
     length = upLogRow[3]
     data = upLogRow[4]
     port = choose(upLogRow[2] == 4000, 4001, 4000)
-    errorText = errorText.encode('gb2312').encode('hex').upper()
+    errorText = errorText.encode('gb2312').encode('hex').upper() + "0A"
     length = len(errorText) / 2
     odbcCursor.execute(
         "insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, convert(VARBINARY(max), ?, 2))",
@@ -134,9 +133,7 @@ def handleMysqlStatus(upLogRow):
         dataId)
     cursor.execute(sqlStr)
     rows = cursor.fetchall()
-    logger.info(
-        "running handleMysqlStatus: {}, rows number is {}".format(
-            sqlStr, len(rows)))
+    logger.info("running handleMysqlStatus: {}, rows number is {}".format(sqlStr, len(rows)))
     global lastSuccessRow
     if len(rows) > 0:
         row = rows[-1]
@@ -144,27 +141,21 @@ def handleMysqlStatus(upLogRow):
         length = len(blobData)
         blobData = pyodbc.Binary(blobData)
         #odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, convert(VARBINARY(max), ?, 2))", deviceId, port, length, blobData)
-        odbcCursor.execute(
-            "insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",
-            deviceId, port, length, blobData)
+        odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)", deviceId, port, length, blobData)
         odbcCursor.commit()
         
         blobData1 = row['data_blob1']
         if blobData1:
             length1 = len(blobData1)
             blobData1 = pyodbc.Binary(blobData1)
-            odbcCursor.execute(
-                "insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",
-                deviceId, port, length1, blobData1)
+            odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)", deviceId, port, length1, blobData1)
             odbcCursor.commit()
         
         blobData2 = row['data_blob2']
         if blobData2:
             length2 = len(blobData1)
             blobData2 = pyodbc.Binary(blobData1)
-            odbcCursor.execute(
-                "insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",
-                deviceId, port, length2, blobData2)
+            odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)", deviceId, port, length2, blobData2)
             odbcCursor.commit()
         
         sqlStr = "update qrcode_table set status = 3 where data_id = {}".format(dataId)
@@ -182,16 +173,8 @@ def handleMysqlStatus(upLogRow):
         blobData = lastSuccessRow['data_blob']
         length = len(blobData)
         blobData = pyodbc.Binary(blobData)
-        logger.info(
-            "blobData length: mysql = {}, mssql = {}".format(
-                length, len(blobData)))
-        #odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, convert(VARBINARY(max), ?, 2))", deviceId, port, length, blobData)
-        odbcCursor.execute(
-            "insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",
-            deviceId,
-            port,
-            length,
-            blobData)
+        logger.info("blobData length: mysql = {}, mssql = {}".format(length, len(blobData)))
+        odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)", deviceId,port,length,blobData)
         odbcCursor.commit()
         doWriteDownLogForApiError(upLogRow, "QR Error")
         
@@ -254,9 +237,7 @@ def doGetRequest(row):
             return (url, r.json()['data']['front_text'],
                     r.json()['data']['behind_text'])
         else:
-            logger.error(
-                "request failed! status_code={}".format(
-                    r.status_code))
+            logger.error("request failed! status_code={}".format(r.status_code))
             return None
     except requests.ConnectionError as exception:
         logger.error(exception, exc_info=True)
@@ -289,11 +270,7 @@ def job():
             handleMysqlStatus(row)
     logger.info("finish job!!!")
 
-#import schedule
-#schedule.every(2).seconds.do(job)
-
 if __name__ == '__main__':
     while True:
-        # schedule.run_pending()
         job()
         time.sleep(1)
