@@ -50,7 +50,7 @@ logger.info("odbc connection setup successfully!")
 @performance
 def getNewRowsFromUpLog():
     rows = odbcCursor.execute(
-        "select * from MessageUpLog where IsNew = 1").fetchall()
+        "select * from MessageUpLog where IsNew = 1 order by CreatedOn desc").fetchall()
     logger.info("running getNewRowsFromUpLog: rows = {}".format(len(rows)))
     return rows
 
@@ -278,18 +278,23 @@ def choose(res, left, right):
 @performance
 def job():
     logger.info("start job!!!")
-    for row in getNewRowsFromUpLog()[:1]:  # 每个周期只处理一个
+    rows = getNewRowsFromUpLog()
+    isFirst = True
+    for row in rows:
         port = row[2]
         if port == 4000:
             logger.info("skip port = 4000!")
             updateIsNewFromUpLog(row)
-            return
-        result = doGetRequest(row)
-        if result:
+        elif isFirst:
+            result = doGetRequest(row)
+            if result:
+                updateIsNewFromUpLog(row)
+                doWriteDownLog(row, result[1], result[2])
+                time.sleep(3)
+                handleMysqlStatus(row)
+                isFirst = False
+        else:
             updateIsNewFromUpLog(row)
-            doWriteDownLog(row, result[1], result[2])
-            time.sleep(3)
-            handleMysqlStatus(row)
     logger.info("finish job!!!")
 
 if __name__ == '__main__':
