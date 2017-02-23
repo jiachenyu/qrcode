@@ -47,20 +47,20 @@ odbcConn   = pyodbc.connect(connStr)
 odbcCursor = odbcConn.cursor()
 logger.info("odbc connection setup successfully!")
 
-@performance
+
 def getNewRowsFromUpLog():
     rows = odbcCursor.execute(
         "select * from MessageUpLog where IsNew = 1 order by CreatedOn desc").fetchall()
     logger.info("running getNewRowsFromUpLog: rows = {}".format(len(rows)))
     return rows
 
-@performance
+
 def updateIsNewFromUpLog(row):
     odbcCursor.execute("update MessageUpLog set IsNew = 0 where Id = ?", row[0])
     odbcCursor.commit()
     logger.info("running updateIsNewFromUpLog: update MessageUpLog set IsNew = 0 where Id = {}".format(row[0]))
 
-@performance
+
 def doWriteDownLog(upLogRow, frontText, behindText):
     deviceId = upLogRow[1]
     length   = upLogRow[3]
@@ -90,7 +90,7 @@ def doWriteDownLog(upLogRow, frontText, behindText):
     odbcCursor.commit()
     logger.info("finish doWriteDownLog!")
 
-@performance
+
 def doWriteDownLogForApiError(upLogRow, errorText):
     deviceId  = upLogRow[1]
     length    = upLogRow[3]
@@ -130,7 +130,7 @@ def findStatus2(dataId):
 
 lastSuccessRow = None
 
-@performance
+
 def handleMysqlStatus(upLogRow):
     dataId   = upLogRow[0]
     deviceId = upLogRow[1]
@@ -216,7 +216,7 @@ session = requests.Session()
 adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=100)
 session.mount('http://', adapter)
 
-@performance
+
 def saveToDisk(url, data_id, equ_id):
     ticket = dict(
         urlparse.parse_qsl(
@@ -225,7 +225,7 @@ def saveToDisk(url, data_id, equ_id):
     urllib.urlretrieve(url, os.path.join(qrCodeDir, filename))
     return open(os.path.join(qrCodeDir, filename), 'rb').read()
 
-@performance
+
 def doGetRequest(row):
     SIGNKEY = 'i5OqMrNXVyOJ5GEMYoEtRHqN1P9ghk6I'
     data_id, equ_id = row[0], row[1]
@@ -270,34 +270,52 @@ def doGetRequest(row):
         logger.info("response text: {}".format(r.text))
         return None
 
-@performance
+
 def choose(res, left, right):
     logger.info("running choose: {}, {}, {}".format(res, left, right))
     return left if res else right
     
-@performance
+lastUpLogRow = None
+
+import dateutil.parser
+def shouldHandle(lastUpLogRow, upLogRow):
+    if upLogRow[2] == 4000:
+        logger.info("skip port = 4000!")
+        return False
+        
+    if not lastUpLogRow:
+        logger.info("lastUpLogRow is None!")
+        return True
+    elif lastUpLogRow[1] != upLogRow[1]:
+        logger.info("[DeviceId] is different!")
+        return True
+    elif (lastUpLogRow[1] == upLogRow[1]) and ((upLogRow[5] -lastUpLogRow[5]).total_seconds() >= 10):
+        logger.info("[CreatedOn] diff is {}!".format( (upLogRow[5] -lastUpLogRow[5]).total_seconds() ))
+        return True
+    else:
+        return False
+        
 def job():
+    global lastUpLogRow
     logger.info("start job!!!")
     rows = getNewRowsFromUpLog()
-    isFirst = True
     for row in rows:
-        port = row[2]
-        if port == 4000:
-            logger.info("skip port = 4000!")
-            updateIsNewFromUpLog(row)
-        elif isFirst:
+        if shouldHandle(lastUpLogRow, row):
             result = doGetRequest(row)
             if result:
+                lastUpLogRow = row
                 updateIsNewFromUpLog(row)
                 doWriteDownLog(row, result[1], result[2])
-                time.sleep(3)
+                time.sleep(1)
                 handleMysqlStatus(row)
-                isFirst = False
         else:
             updateIsNewFromUpLog(row)
     logger.info("finish job!!!")
 
 if __name__ == '__main__':
     while True:
-        job()
+        try:
+            job()
+        except Exception as exception:
+            logger.error(exception, exc_info=True)
         time.sleep(1)
