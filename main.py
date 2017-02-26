@@ -66,8 +66,8 @@ def doWriteDownLog(upLogRow, frontText, behindText):
     length   = upLogRow[3]
     data = upLogRow[4]
     port = choose(upLogRow[2] == 4000, 4001, 4000)
-    odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",deviceId,port,length,data)
-    odbcCursor.commit()
+    #odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",deviceId,port,length,data)
+    #odbcCursor.commit()
 
     frontText = frontText.encode('gb2312').encode('hex').upper()
     length = len(frontText) / 2
