@@ -28,14 +28,6 @@ rotateFile.setFormatter(formatter)
 logger = logging.getLogger(__name__)
 logger.addHandler(rotateFile)
 
-def performance(f):
-    def fn(*args, **kw):
-        start = time.time()
-        result = f(*args, **kw)
-        end = time.time() 
-        logger.info('call %s() in %fs' % (f.__name__, (end - start)))
-        return result
-    return fn
 #-------------------- sql server operation ----------------------
 dsn  = 'sqlserverdatasource'
 user = 'sa'
@@ -66,8 +58,8 @@ def doWriteDownLog(upLogRow, frontText, behindText):
     length   = upLogRow[3]
     data = upLogRow[4]
     port = choose(upLogRow[2] == 4000, 4001, 4000)
-    #odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",deviceId,port,length,data)
-    #odbcCursor.commit()
+    odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",deviceId,port,length,data)
+    odbcCursor.commit()
 
     frontText = frontText.encode('gb2312').encode('hex').upper()
     length = len(frontText) / 2
@@ -144,7 +136,6 @@ def handleMysqlStatus(upLogRow):
         blobData = row['data_blob']
         length   = len(blobData)
         blobData = pyodbc.Binary(blobData)
-        #odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, convert(VARBINARY(max), ?, 2))", deviceId, port, length, blobData)
         odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)", deviceId, port, length, blobData)
         odbcCursor.commit()
         
@@ -306,7 +297,6 @@ def job():
                 lastUpLogRow = row
                 updateIsNewFromUpLog(row)
                 doWriteDownLog(row, result[1], result[2])
-                time.sleep(1)
                 handleMysqlStatus(row)
         else:
             updateIsNewFromUpLog(row)
