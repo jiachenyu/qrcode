@@ -66,8 +66,8 @@ def doWriteDownLog(upLogRow, frontText, behindText):
     length   = upLogRow[3]
     data = upLogRow[4]
     port = choose(upLogRow[2] == 4000, 4001, 4000)
-    #odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",deviceId,port,length,data)
-    #odbcCursor.commit()
+    odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",deviceId,port,length,data)
+    odbcCursor.commit()
 
     frontText = frontText.encode('gb2312').encode('hex').upper()
     length = len(frontText) / 2
@@ -115,6 +115,7 @@ logger.info("mysql connection setup successfully!")
 
 def findStatus2(dataId):
     cursor = mysqlConn.cursor()
+    cursor.ping(True)
     sqlStr = "select * from qrcode_table where status = 2 and data_id = {}".format(dataId)
     result = []
     for index in xrange(10):
@@ -247,6 +248,7 @@ def doGetRequest(row):
             logger.info(behindText)
 
             imageData = saveToDisk(url, data_id, equ_id)
+            mysqlConn.cursor().ping(True)
             mysqlConn.cursor().execute(
                 "INSERT INTO qrcode_table (data_id, equ_id, link, image) VALUES (%s,%s,%s,%s) ON DUPLICATE KEY UPDATE link=%s, image=%s",
                 (data_id,
