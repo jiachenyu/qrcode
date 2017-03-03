@@ -115,7 +115,7 @@ logger.info("mysql connection setup successfully!")
 
 def findStatus2(dataId):
     cursor = mysqlConn.cursor()
-    cursor.ping(True)
+    mysqlConn.ping(True)
     sqlStr = "select * from qrcode_table where status = 2 and data_id = {}".format(dataId)
     result = []
     for index in xrange(10):
@@ -248,7 +248,7 @@ def doGetRequest(row):
             logger.info(behindText)
 
             imageData = saveToDisk(url, data_id, equ_id)
-            mysqlConn.cursor().ping(True)
+            mysqlConn.ping(True)
             mysqlConn.cursor().execute(
                 "INSERT INTO qrcode_table (data_id, equ_id, link, image) VALUES (%s,%s,%s,%s) ON DUPLICATE KEY UPDATE link=%s, image=%s",
                 (data_id,
