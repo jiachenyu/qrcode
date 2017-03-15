@@ -13,6 +13,7 @@ import urlparse
 import pyodbc
 import pprint
 import binascii
+import psutil
 from logging.handlers import RotatingFileHandler
 
 reload(sys)
@@ -36,6 +37,13 @@ def performance(f):
         logger.info('call %s() in %fs' % (f.__name__, (end - start)))
         return result
     return fn
+
+def ensureOneProcessInstance():
+    pids = psutil.pids()
+    processes = [psutil.Process(pid) for pid in pids]
+    processInstances = [process for process in processes if (process.name().find('main')) == 0 and (process.name().find('.exe') > 0)]
+    return processInstances
+        
 #-------------------- sql server operation ----------------------
 dsn  = 'sqlserverdatasource'
 user = 'sa'
@@ -49,8 +57,7 @@ logger.info("odbc connection setup successfully!")
 
 
 def getNewRowsFromUpLog():
-    rows = odbcCursor.execute(
-        "select * from MessageUpLog where IsNew = 1 order by CreatedOn desc").fetchall()
+    rows = odbcCursor.execute("select * from MessageUpLog where IsNew = 1 order by CreatedOn desc").fetchall()
     logger.info("running getNewRowsFromUpLog: rows = {}".format(len(rows)))
     return rows
 
@@ -66,8 +73,8 @@ def doWriteDownLog(upLogRow, frontText, behindText):
     length   = upLogRow[3]
     data = upLogRow[4]
     port = choose(upLogRow[2] == 4000, 4001, 4000)
-    odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",deviceId,port,length,data)
-    odbcCursor.commit()
+    #odbcCursor.execute("insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, ?)",deviceId,port,length,data)
+    #odbcCursor.commit()
 
     frontText = frontText.encode('gb2312').encode('hex').upper()
     length = len(frontText) / 2
@@ -81,13 +88,13 @@ def doWriteDownLog(upLogRow, frontText, behindText):
 
     behindText = behindText.encode('gb2312').encode('hex').upper()
     length = len(behindText) / 2
-    odbcCursor.execute(
-        "insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, convert(VARBINARY(max), ?, 2))",
-        deviceId,
-        port,
-        length,
-        behindText)
-    odbcCursor.commit()
+    #odbcCursor.execute(
+    #    "insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, convert(VARBINARY(max), ?, 2))",
+    #    deviceId,
+    #    port,
+    #    length,
+    #    behindText)
+    #odbcCursor.commit()
     logger.info("finish doWriteDownLog!")
 
 
@@ -96,13 +103,13 @@ def doWriteDownLogForApiError(upLogRow, errorText):
     length    = upLogRow[3]
     data      = upLogRow[4]
     port      = choose(upLogRow[2] == 4000, 4001, 4000)
+    logger.info("finish doWriteDownLogForApiError! errorText = {}".format(errorText))
     errorText = errorText.encode('gb2312').encode('hex').upper() + "0A"
     length    = len(errorText) / 2
     odbcCursor.execute(
         "insert into MessageDownLog(DeviceId, Port, Length, Data) values(?, ?, ?, convert(VARBINARY(max), ?, 2))",
         deviceId, port, length, errorText)
     odbcCursor.commit()
-    logger.info("finish doWriteDownLogForApiError!")
     
 #-------------------- mysql operation ----------------------
 logger.info("start setup mysql connection.")
@@ -114,20 +121,17 @@ mysqlConn = pymysql.connect(host='localhost',
 logger.info("mysql connection setup successfully!")
 
 def findStatus2(dataId):
-    cursor = mysqlConn.cursor()
     mysqlConn.ping(True)
-    sqlStr = "select * from qrcode_table where status = 2 and data_id = {}".format(dataId)
-    result = []
-    for index in xrange(10):
-        cursor.execute(sqlStr)
-        rows = cursor.fetchall()
-        if len(rows) > 0:
-            result = rows
-            break
-        else:
-            time.sleep(0.1)
-    logger.info("running handleMysqlStatus: {}, rows number is {}".format(sqlStr, len(result)))
-    return result
+    sqlStr = "select * from qrcode_table where status = 2"
+    with mysqlConn.cursor() as cursor:
+        for index in xrange(30):
+            cursor.execute(sqlStr)
+            logger.info("running handleMysqlStatus: {}, dataId = {}, index = {}, rows number is {}".format(sqlStr, dataId, index, cursor.rowcount))
+            if cursor.rowcount > 0:
+                return list(cursor)[:1]
+            else:
+                time.sleep(0.1)
+    return []
 
 lastSuccessRow = None
 
@@ -173,8 +177,11 @@ def handleMysqlStatus(upLogRow):
         cursor = mysqlConn.cursor()
         if not lastSuccessRow:
             cursor.execute(sqlStr)
+            result = cursor.fetchall()
+            if len(result) == 0:
+                return
             logger.info("running handleMysqlStatus: {}".format(sqlStr))
-            lastSuccessRow = cursor.fetchall()[0]
+            lastSuccessRow = result[0]
 
         blobData = lastSuccessRow['data_blob']
         length   = len(blobData)
@@ -315,9 +322,18 @@ def job():
     logger.info("finish job!!!")
 
 if __name__ == '__main__':
-    while True:
-        try:
-            job()
-        except Exception as exception:
-            logger.error(exception, exc_info=True)
-        time.sleep(1)
+    processes = ensureOneProcessInstance()
+    logger.info(len(processes))
+    if len(processes) > 2:
+        logger.info("This program has been started! The instance number is {}".format(len(processes)))
+        for process in processes:
+            logger.info("Thre process name is {}!".format(process.name()))
+        logger.info("Please kill these processes mannually!")
+        raw_input()
+    else:
+        while True:
+            try:
+                job()
+            except Exception as exception:
+                logger.error(exception, exc_info=True)
+            time.sleep(1)
