@@ -122,6 +122,7 @@ logger.info("mysql connection setup successfully!")
 
 def findStatus2(dataId):
     mysqlConn.ping(True)
+    mysqlConn.autocommit(True)
     sqlStr = "select * from qrcode_table where status = 2"
     with mysqlConn.cursor() as cursor:
         for index in xrange(30):
@@ -130,7 +131,7 @@ def findStatus2(dataId):
             if cursor.rowcount > 0:
                 return list(cursor)[:1]
             else:
-                time.sleep(0.1)
+                time.sleep(0.2)
     return []
 
 lastSuccessRow = None
