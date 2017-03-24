@@ -289,9 +289,9 @@ lastUpLogRow = None
 
 import dateutil.parser
 def shouldHandle(lastUpLogRow, upLogRow):
-    if upLogRow[2] == 4000:
-        logger.info("skip port = 4000!")
-        return False
+    #if upLogRow[2] == 4000:
+    #    logger.info("skip port = 4000!")
+    #    return False
         
     if not lastUpLogRow:
         logger.info("lastUpLogRow is None!")
